@@ -1,0 +1,37 @@
+{
+  "status": "success",
+  "elapsed_seconds": 115.26,
+  "out_dir": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results",
+  "log_file": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/run_vmiss_tuning.log",
+  "metrics_file": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/variant_metrics_compiled.txt",
+  "analysis_json": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/vmiss_threshold_analysis.json",
+  "analysis_plot": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/vmiss_distribution_analysis_mode2.png",
+  "args": {
+    "out_dir": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results",
+    "threads": 12,
+    "skip_calc": true,
+    "skip_analysis": false,
+    "log_file": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/run_vmiss_tuning.log",
+    "bfile": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/wgs.auto.par/results/07_sample_qc/run_qc/cteph_agp3k_v5_wgs_merged.sample_qc",
+    "info": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/info/ph_agp3k_combined_final_20251112.xlsx",
+    "dp_col": "Target DP",
+    "pheno_col": "Outcome",
+    "case_value": "PH",
+    "ctrl_value": "AGP3K",
+    "maf_group": "ctrl",
+    "metrics_file": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/variant_metrics_compiled.txt",
+    "id_col": "ID JHRPv5",
+    "plink2_path": "plink2",
+    "analysis_mode": 2,
+    "maf_thresholds": [
+      0.01,
+      0.05
+    ],
+    "cdf_step": 0.001,
+    "cdf_step_15x": 0.01,
+    "cdf_step_30x": 0.01,
+    "knee_weight_x": 2.0,
+    "knee_weight_y": 1.0,
+    "threshold_decimals": 2
+  }
+}

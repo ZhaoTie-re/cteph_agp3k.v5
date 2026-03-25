@@ -1,0 +1,71 @@
+{
+  "analysis_mode": 2,
+  "maf_thresholds": [
+    0.01,
+    0.05
+  ],
+  "hist_step": 0.01,
+  "cdf_step_dict": {
+    "15X": 0.01,
+    "30X": 0.01
+  },
+  "bin_position": "left",
+  "knee_parameters": {
+    "curve": "concave",
+    "direction": "increasing",
+    "S": 1.0,
+    "weight_x": 2.0,
+    "weight_y": 1.0,
+    "threshold_decimals": 2
+  },
+  "group_statistics": {
+    "VMISS_15X": {
+      "total_variants": 45778307,
+      "vmiss_col": "VMISS_15X",
+      "maf_group": "All",
+      "vmiss_min": 0.0,
+      "vmiss_max": 1.0,
+      "vmiss_mean": 0.08708067983388901,
+      "vmiss_median": 0.0275752991437912
+    },
+    "VMISS_30X": {
+      "total_variants": 45778307,
+      "vmiss_col": "VMISS_30X",
+      "maf_group": "All",
+      "vmiss_min": 0.0,
+      "vmiss_max": 1.0,
+      "vmiss_mean": 0.06554639339447021,
+      "vmiss_median": 0.01856759935617447
+    }
+  },
+  "knee_points": {
+    "VMISS_15X": {
+      "knee_found": true,
+      "knee_vmiss": 0.06,
+      "knee_vmiss_raw": 0.06,
+      "knee_cumulative_percentage": 81.55027664085524,
+      "knee_cumulative_count": 37332336,
+      "total_variants": 45778307,
+      "vmiss_col": "VMISS_15X",
+      "maf_group": "All",
+      "adaptive_knee_S": 1.0,
+      "min_cumulative_filter": 5.0,
+      "threshold_decimals": 2
+    },
+    "VMISS_30X": {
+      "knee_found": true,
+      "knee_vmiss": 0.05,
+      "knee_vmiss_raw": 0.05,
+      "knee_cumulative_percentage": 81.26437484898688,
+      "knee_cumulative_count": 37201455,
+      "total_variants": 45778307,
+      "vmiss_col": "VMISS_30X",
+      "maf_group": "All",
+      "adaptive_knee_S": 1.0,
+      "min_cumulative_filter": 5.0,
+      "threshold_decimals": 2
+    }
+  },
+  "plot_path": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/vmiss_distribution_analysis_mode2.png",
+  "json_path": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/vmiss_threshold_analysis.json"
+}

@@ -1,0 +1,20 @@
+{
+  "_comment": "Sample QC rules: remove sample if CONDITION1 OR CONDITION2 is true.",
+  "condition1": {
+    "_comment_mode": "mode options: dp_robustz | smiss",
+    "mode": "dp_robustz",
+    "dp_robustz": {
+      "_comment": "Remove when DP_RobustZ_in_TargetDP < remove_if_less_than",
+      "remove_if_less_than": -3.0
+    },
+    "smiss": {
+      "_comment": "Remove when SMISS > remove_if_greater_than",
+      "remove_if_greater_than": 0.05
+    }
+  },
+  "condition2": {
+    "_comment": "Het_F outlier rule based on mean ± sd_multiplier * SD",
+    "enabled": true,
+    "sd_multiplier": 5.0
+  }
+}
