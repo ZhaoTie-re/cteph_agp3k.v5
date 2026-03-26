@@ -1,0 +1,10 @@
+{
+  "MAF < 0.01": {
+    "CTRL_HWE": null,
+    "CASE_HWE": null
+  },
+  "MAF >= 0.01": {
+    "CTRL_HWE": 1e-06,
+    "CASE_HWE": null
+  }
+}

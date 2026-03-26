@@ -33,7 +33,11 @@ params.dp_col 			      = 'DP'
 // QC Configuration
 // -----------------------------------------------------------------------------
 params.sample_qc_config       = "${params.script_dir}/sample_qc_config.json"
+params.variant_qc_vmiss_config = "${params.script_dir}/vqc_config_vmiss.json"
+params.variant_qc_hwe_config   = "${params.script_dir}/vqc_config_hwe.json"
 params.high_ld_regions       = '/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/info/high-LD-regions-hg38-GRCh38_modified.txt'
+// true: in RUN_VARIANT_QC, exclude IIDs with SELECTED_FOR_REMOVAL=true from PI_HAT vertex-cover TSV for HWE calculations only (VMISS and AAF always use full samples)
+params.variant_qc_exclude_pihat_for_hwe = true
 
 // -----------------------------------------------------------------------------
 // BBJ Configuration
@@ -545,6 +549,58 @@ process PREPARE_BBJ_GENOTYPE {
 	"""
 }
 
+process RUN_VARIANT_QC {
+	executor 'slurm'
+	queue 'gr10478b'
+	time '24h'
+
+	publishDir "${params.out_dir}/10_variant_qc", mode: 'symlink'
+
+	input:
+	tuple path(qc_bed), path(qc_bim), path(qc_fam)
+	path pihat_vertex_cover_tsv
+
+	output:
+	path("*.variant_qc_summary.tsv")
+	path("*.vmiss_pass_variants.tsv")
+	path("*.hwe_pass_variants.tsv")
+	path("*.pass_variants.tsv")
+	path("*.variant_qc.bed")
+	path("*.variant_qc.bim")
+	path("*.variant_qc.fam")
+	path("*.vmiss.*.png")
+	path("*.hwe.png")
+
+	script:
+	def bed_prefix = qc_bed.baseName
+	def output_prefix = "${bed_prefix}.variant_qc"
+	def variant_qc_script = "${params.script_dir}/variant_qc_pipeline.py"
+	def pihat_exclude_arg = params.variant_qc_exclude_pihat_for_hwe ? "--pihat-vertex-cover-tsv-for-hwe ${pihat_vertex_cover_tsv}" : ""
+	"""
+	export PATH=/home/b/b37974/:\$PATH
+	source activate ${params.conda_env_activate}
+
+	python ${variant_qc_script} \
+		--bed-prefix ${bed_prefix} \
+		--out-prefix ${output_prefix} \
+		--sample-info-xlsx ${params.sample_info} \
+		--sample-id-col "${params.sample_id_col}" \
+		--target-dp-col "${params.target_dp_col}" \
+		--phenotype-col "${params.phenotype_col}" \
+		--case-value "${params.phenotype_case_value}" \
+		--ctrl-value "${params.phenotype_ctrl_value}" \
+		--vmiss-config ${params.variant_qc_vmiss_config} \
+		--vmiss-mode dp \
+		--maf-group ctrl \
+		--hwe-config ${params.variant_qc_hwe_config} \
+		--script-path ${params.script_dir} \
+		--tmpdir "${output_prefix}_tmp" \
+		--threads 16 \
+		${pihat_exclude_arg} \
+		--no-stratify-by-maf
+	"""
+}
+
 
 
 // -----------------------------------------------------------------------------
@@ -591,6 +647,10 @@ workflow {
 	ch_sample_qc_plink = ch_sample_qc_all[6]
 
 	// 7. Run PI_HAT-based relatedness QC on post-QC genotypes (annotation only)
-	RUN_PIHAT_QC(ch_sample_qc_plink, ch_fprune_in, ch_sample_qc_metrics)
+	ch_pihat_all    = RUN_PIHAT_QC(ch_sample_qc_plink, ch_fprune_in, ch_sample_qc_metrics)
+	ch_pihat_vertex = ch_pihat_all[1]
+
+	// 8. Run variant QC on post-sample-QC genotypes
+	RUN_VARIANT_QC(ch_sample_qc_plink, ch_pihat_vertex)
 }
 
