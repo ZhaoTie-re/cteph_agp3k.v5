@@ -168,7 +168,9 @@ def plot_hwe_scatter_by_maf_category(
         # First, restrict to VMISS-passed variants.
         if has_pass_vmiss:
             before_vmiss = len(chunk)
-            chunk = chunk[chunk["PASS_VMISS"]]
+            # Use .loc and .copy() to avoid SettingWithCopyWarning when
+            # assigning new columns on this filtered view.
+            chunk = chunk.loc[chunk["PASS_VMISS"]].copy()
             removed_vmiss = before_vmiss - len(chunk)
             if removed_vmiss > 0:
                 dropped_not_vmiss += removed_vmiss
@@ -178,7 +180,8 @@ def plot_hwe_scatter_by_maf_category(
                 )
         elif pass_vmiss_ids is not None:
             before_vmiss = len(chunk)
-            chunk = chunk[chunk[variant_id_col].isin(pass_vmiss_ids)]
+            # Same here: ensure we operate on a fresh copy after filtering.
+            chunk = chunk.loc[chunk[variant_id_col].isin(pass_vmiss_ids)].copy()
             removed_vmiss = before_vmiss - len(chunk)
             if removed_vmiss > 0:
                 dropped_not_vmiss += removed_vmiss
