@@ -565,9 +565,7 @@ process RUN_VARIANT_QC {
 	path("*.vmiss_pass_variants.tsv")
 	path("*.hwe_pass_variants.tsv")
 	path("*.pass_variants.tsv")
-	path("*.variant_qc.bed")
-	path("*.variant_qc.bim")
-	path("*.variant_qc.fam")
+	tuple path("*.variant_qc.bed"), path("*.variant_qc.bim"), path("*.variant_qc.fam")
 	path("*.vmiss.*.png")
 	path("*.hwe.png")
 
@@ -602,6 +600,160 @@ process RUN_VARIANT_QC {
 }
 
 
+process PREPARE_BBJ_PCA_BASE {
+	executor 'slurm'
+	queue 'gr10478b'
+	time '24h'
+
+	publishDir "${params.out_dir}/09_bbj_preprocess/bbj_pca_base", mode: 'symlink'
+
+	input:
+	// BBJ reference genotype after preprocessing
+	tuple path(bbj_bed), path(bbj_bim), path(bbj_fam)
+	// Case-control genotype after variant QC
+	tuple path(vqc_bed), path(vqc_bim), path(vqc_fam)
+
+	output:
+	// Keep outputs as separate channels to maximize resume compatibility.
+	path("bbj.pca.intersect.snps")
+	path("bbj.pca_base.eigenvec")
+	path("bbj.pca_base.eigenval")
+	path("bbj.pca_base.eigenvec.allele")
+	path("bbj.pca_base.acount")
+
+	script:
+	def bbj_prefix = bbj_bed.baseName
+	def vqc_prefix = vqc_bed.baseName
+	"""
+	export PATH=/home/b/b37974/:\$PATH
+	source activate ${params.conda_env_activate}
+
+	# 1. On BBJ genotype, remove high-LD regions and perform LD pruning (50 5 0.2)
+	plink2 \
+		--bfile ${bbj_prefix} \
+		--autosome \
+		--snps-only just-acgt \
+		--exclude range ${params.high_ld_regions} \
+		--indep-pairwise 50 5 0.2 \
+		--out bbj.pca_prune \
+		--threads 16
+
+	# 2. From case-control variant QC genotype, export the list of variant IDs
+	plink2 \
+		--bfile ${vqc_prefix} \
+		--write-snplist \
+		--out vqc_all_snps \
+		--threads 16
+
+	# 3. Take the intersection of pruned BBJ SNPs and variant-QC SNPs
+	sort -u bbj.pca_prune.prune.in > bbj.prune.sorted
+	sort -u vqc_all_snps.snplist > vqc.snps.sorted
+	comm -12 bbj.prune.sorted vqc.snps.sorted > bbj.pca.intersect.snps
+
+	# 4. Run PCA on BBJ genotype using the intersected SNP set
+	plink2 \
+		--bfile ${bbj_prefix} \
+		--extract bbj.pca.intersect.snps \
+		--freq counts \
+		--pca 20 allele-wts approx \
+		--out bbj.pca_base \
+		--threads 16
+	"""
+}
+
+
+process PROJECT_ONTO_BBJ_PCS {
+	executor 'slurm'
+	queue 'gr10478b'
+	time '24h'
+
+	publishDir "${params.out_dir}/11_bbj_projection", mode: 'symlink'
+
+	input:
+	// PCA base outputs from PREPARE_BBJ_PCA_BASE (separate channels)
+	path bbj_pca_snps
+	path bbj_pca_evec
+	path bbj_pca_eval
+	path bbj_pca_evec_allele
+	path bbj_pca_acount
+	// BBJ reference genotype after preprocessing
+	tuple path(bbj_bed), path(bbj_bim), path(bbj_fam)
+	// Case-control genotype after variant QC
+	tuple path(vqc_bed), path(vqc_bim), path(vqc_fam)
+
+	output:
+	// Projected PCs (scores) for merged BBJ + case/control genotypes
+	path("*.bbjproj.sscore")
+	path("*.bbjproj.sscore.vars")
+	// Figure 1: explained ratio / cumulative explained ratio
+	path("*.bbjproj.variance_summary.png")
+	// Figure 2: pairwise PC scatter plots
+	path("*.bbjproj.pc_pairs.pdf")
+
+	script:
+	def bbj_prefix  = bbj_bed.baseName
+	def vqc_prefix  = vqc_bed.baseName
+	def proj_prefix = "${vqc_prefix}.bbjproj"
+	def projection_plot_script = "${params.script_dir}/plot_bbj_projection.py"
+	"""
+	export PATH=/home/b/b37974/:\$PATH
+	source activate ${params.conda_env_activate}
+
+	# 1) Restrict BBJ and case-control genotypes to the common SNP set used by BBJ PCA base.
+	plink2 \
+		--bfile ${bbj_prefix} \
+		--extract ${bbj_pca_snps} \
+		--make-bed \
+		--out bbj.proj.base \
+		--threads 16
+
+	plink2 \
+		--bfile ${vqc_prefix} \
+		--extract ${bbj_pca_snps} \
+		--make-bed \
+		--out vqc.proj.base \
+		--threads 16
+
+	# 2) Merge BBJ and case-control genotypes with plink1.9 --bmerge.
+	#    This path is more stable than plink2 --pmerge-list for this use-case.
+	plink \
+		--bfile bbj.proj.base \
+		--bmerge vqc.proj.base.bed vqc.proj.base.bim vqc.proj.base.fam \
+		--make-bed \
+		--keep-allele-order \
+		--out merged.proj.base \
+		--threads 16
+
+	# 3) True projection onto BBJ PCs using allele weights and reference frequencies.
+	plink2 \
+		--bfile merged.proj.base \
+		--read-freq ${bbj_pca_acount} \
+		--score ${bbj_pca_evec_allele} 2 6 header-read no-mean-imputation variance-standardize list-variants \
+		--score-col-nums 7-26 \
+		--out ${proj_prefix} \
+		--threads 16
+
+	# Publication-style figures for BBJ PCA and projection results.
+	python ${projection_plot_script} \
+		--bbj-eigenval ${bbj_pca_eval} \
+		--projected-sscore ${proj_prefix}.sscore \
+		--sample-info ${params.sample_info} \
+		--sample-id-col "${params.sample_id_col}" \
+		--phenotype-col "${params.phenotype_col}" \
+		--phenotype-case-value "${params.phenotype_case_value}" \
+		--phenotype-ctrl-value "${params.phenotype_ctrl_value}" \
+		--bbj-id-prefix "bbj_" \
+		--bbj-label "BBJ" \
+		--case-label "CTEPH" \
+		--ctrl-label "AGP3K" \
+		--max-pcs 20 \
+		--out-prefix ${proj_prefix}
+	"""
+}
+
+
+
+
 
 // -----------------------------------------------------------------------------
 // Workflow Execution
@@ -618,7 +770,8 @@ workflow {
 	])
 
 	// [BBJ-PREP] Raw genotype preprocessing for projection (outside main numbered flow)
-	PREPARE_BBJ_GENOTYPE(ch_bbj_raw)
+	ch_bbj_prepped = PREPARE_BBJ_GENOTYPE(ch_bbj_raw)
+	ch_bbj_plink   = ch_bbj_prepped[0]
 
 	// 2. Execute process flow
 	ch_prepared         = PREPARE_VCF(ch_chrs, ch_sample_list)
@@ -651,6 +804,21 @@ workflow {
 	ch_pihat_vertex = ch_pihat_all[1]
 
 	// 8. Run variant QC on post-sample-QC genotypes
-	RUN_VARIANT_QC(ch_sample_qc_plink, ch_pihat_vertex)
+	ch_variant_qc_all   = RUN_VARIANT_QC(ch_sample_qc_plink, ch_pihat_vertex)
+	ch_variant_qc_plink = ch_variant_qc_all[4]
+
+	// 9. Build BBJ PCA base for future projection using intersected pruned SNPs
+	ch_bbj_pca_base = PREPARE_BBJ_PCA_BASE(ch_bbj_plink, ch_variant_qc_plink)
+
+	// 10. Project case/control samples onto PCs using the same SNP intersection
+	PROJECT_ONTO_BBJ_PCS(
+		ch_bbj_pca_base[0],
+		ch_bbj_pca_base[1],
+		ch_bbj_pca_base[2],
+		ch_bbj_pca_base[3],
+		ch_bbj_pca_base[4],
+		ch_bbj_plink,
+		ch_variant_qc_plink
+	)
 }
 
