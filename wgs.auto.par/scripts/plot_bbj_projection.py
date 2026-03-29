@@ -19,6 +19,7 @@ import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.lines import Line2D
 import numpy as np
@@ -196,7 +197,7 @@ def _configure_matplotlib() -> None:
     )
 
 
-def _style_axes(ax: plt.Axes) -> None:
+def _style_axes(ax: Axes) -> None:
     """Apply a clean, publication-style look to an axis."""
 
     for spine in ["top", "right"]:
