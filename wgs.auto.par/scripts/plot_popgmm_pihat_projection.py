@@ -695,7 +695,7 @@ def plot_grouped_pc_kde(
         axes[(j - 1) // n_cols][(j - 1) % n_cols].axis("off")
 
     fig.suptitle(
-        f"All PC Distribution Analysis: {case_label} vs {ctrl_label} - Relatedness-Aware Subset",
+        "Case/Control Distributions on Relatedness-Aware PC Axes",
         fontweight="bold",
         y=0.995,
     )

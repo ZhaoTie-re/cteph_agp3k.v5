@@ -50,9 +50,11 @@ params.bbj_threads           = 16
 params.bbj_reuse_outputs     = true
 
 //-----------------------------------------------------------------------------
-// PopGMM Configuration for ancestry inference
+// PopGMM Configuration & Separate MAF-based Subset Configuration
 //------------------------------------------------------------------------------
 params.popgmm = '/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/PopGMM_output/cluster2_highconf_fid_iid_conf_ge_0p95.tsv'
+params.fixed_model_maf_group = 'ctrl'   // ctrl | case | all
+params.fixed_model_maf_threshold = 0.01
 
 // -----------------------------------------------------------------------------
 // Processes
@@ -933,6 +935,47 @@ process POPGMM_PIHAT_INTERSECTION_PROJECTION {
 }
 
 
+process PREPARE_FIXED_MODEL_GENOTYPE {
+	executor 'slurm'
+	queue 'gr10478b'
+	time '24h'
+
+	publishDir "${params.out_dir}/14_fixed_model_prep", mode: 'symlink'
+
+	input:
+	// PopGMM-subset genotype from POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION
+	tuple path(pop_bed), path(pop_bim), path(pop_fam)
+	// PI_HAT vertex table from RUN_PIHAT_QC
+	path pihat_vertex_tsv
+
+	output:
+	path("*.pihat_selected.exclude.fid_iid")
+	tuple path("*.fixed_ready.bed"), path("*.fixed_ready.bim"), path("*.fixed_ready.fam")
+	path("*.maf_group.keep.fid_iid")
+	path("*.maf_ref.afreq")
+	path("*.maf_ge_threshold.variants.txt")
+	path("*.maf_lt_threshold.variants.txt")
+	tuple path("*.maf_ge_threshold.bed"), path("*.maf_ge_threshold.bim"), path("*.maf_ge_threshold.fam")
+	tuple path("*.maf_lt_threshold.bed"), path("*.maf_lt_threshold.bim"), path("*.maf_lt_threshold.fam"), optional: true
+	path("*.fixed_model_prep.log.txt")
+
+	script:
+	def pop_prefix = pop_bed.baseName.replaceAll(/\.bed$/, '')
+	def out_prefix = "${pop_prefix}.fixed_model"
+	def run_script = "${params.script_dir}/run_fixed_model_genotype_prep.sh"
+	"""
+	export PATH=/home/b/b37974/:\$PATH
+	source activate ${params.conda_env_activate}
+
+	zsh ${run_script} \
+		${pop_prefix} \
+		${pihat_vertex_tsv} \
+		${out_prefix} \
+		${params.fixed_model_maf_group} \
+		${params.fixed_model_maf_threshold} \
+		16
+	"""
+}
 
 
 
@@ -1011,12 +1054,21 @@ workflow {
 		ch_bbj_pca_base[2]
 	)
 
-	// 12. Intersect PopGMM with PI_HAT selected-for-removal samples, then perform base PCA and projection
 	ch_popgmm_plink = ch_popgmm_all[0]
+
+	// 12. Intersect PopGMM with PI_HAT selected-for-removal samples, then perform base PCA and projection
 	POPGMM_PIHAT_INTERSECTION_PROJECTION(
 		ch_popgmm_plink,
 		ch_pihat_vertex,
 		ch_popgmm_keep
+	)
+
+	// 13. Prepare fixed-model genotype from PopGMM genotype:
+	//     remove PI_HAT selected samples, drop monomorphic variants,
+	//     and split by MAF threshold using ctrl/case/all reference group
+	PREPARE_FIXED_MODEL_GENOTYPE(
+		ch_popgmm_plink,
+		ch_pihat_vertex
 	)
 }
 
