@@ -783,9 +783,7 @@ process POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION {
 	path bbj_pca_eval
 
 	output:
-	path("*.popgmm.bed")
-	path("*.popgmm.bim")
-	path("*.popgmm.fam")
+	tuple path("*.popgmm.bed"), path("*.popgmm.bim"), path("*.popgmm.fam")
 	path("*.popgmm.subset.log.txt")
 	path("*.bbjproj.popgmm.variance_summary.png")
 	path("*.bbjproj.popgmm.pc_pairs.pdf")
@@ -869,6 +867,72 @@ process POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION {
 }
 
 
+process POPGMM_PIHAT_INTERSECTION_PROJECTION {
+	executor 'slurm'
+	queue 'gr10478b'
+	time '24h'
+
+	publishDir "${params.out_dir}/13_popgmm_pihat_projection", mode: 'symlink'
+
+	input:
+	// PopGMM-subset genotype from POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION
+	tuple path(pop_bed), path(pop_bim), path(pop_fam)
+	// PI_HAT vertex table from RUN_PIHAT_QC
+	path pihat_vertex_tsv
+	// PopGMM source list (FID IID, no header)
+	path popgmm_keep
+
+	output:
+	path("*.pihat_popgmm_intersection.iid")
+	path("*.pihat_popgmm_overlap.exclude.fid_iid")
+	tuple path("*.base_no_intersection.bed"), path("*.base_no_intersection.bim"), path("*.base_no_intersection.fam")
+	path("*.base_no_intersection.prune.prune.in")
+	path("*.base_no_intersection.pca.eigenvec")
+	path("*.base_no_intersection.pca.eigenval")
+	path("*.base_no_intersection.pca.eigenvec.allele")
+	path("*.base_no_intersection.pca.acount")
+	path("*.all_samples_projection.sscore")
+	path("*.all_samples_projection.sscore.vars")
+	path("*.all_samples_projection.variance_summary.png")
+	path("*.all_samples_projection.pc_group_distribution.png")
+	path("*.all_samples_projection.pc_group_distribution.log.txt")
+	path("*.all_samples_projection.pc_pairs.pdf")
+	path("*.done.txt")
+
+	script:
+	def pop_prefix = pop_bed.baseName.replaceAll(/\.bed$/, '')
+	def out_prefix = "${pop_prefix}.pihat_proj"
+	def run_script = "${params.script_dir}/run_popgmm_pihat_projection.sh"
+	def plot_script = "${params.script_dir}/plot_popgmm_pihat_projection.py"
+	"""
+	export PATH=/home/b/b37974/:\$PATH
+	source activate ${params.conda_env_activate}
+
+	zsh ${run_script} \
+		${popgmm_keep} \
+		${pihat_vertex_tsv} \
+		${pop_prefix} \
+		${params.high_ld_regions} \
+		16 \
+		${out_prefix}
+
+	python ${plot_script} \
+		--base-eigenval ${out_prefix}.base_no_intersection.pca.eigenval \
+		--projected-sscore ${out_prefix}.all_samples_projection.sscore \
+		--relatedness-flagged-fid-iid ${out_prefix}.pihat_popgmm_overlap.exclude.fid_iid \
+		--sample-info ${params.sample_info} \
+		--sample-id-col "${params.sample_id_col}" \
+		--phenotype-col "${params.phenotype_col}" \
+		--phenotype-case-value "${params.phenotype_case_value}" \
+		--phenotype-ctrl-value "${params.phenotype_ctrl_value}" \
+		--case-label "CTEPH" \
+		--ctrl-label "AGP3K" \
+		--max-pcs 20 \
+		--out-prefix ${out_prefix}.all_samples_projection
+	"""
+}
+
+
 
 
 
@@ -940,11 +1004,19 @@ workflow {
 
 	// 11. PopGMM subset on variant-QC genotype + PopGMM-filtered replot from existing projection sscore
 	ch_popgmm_keep = file(params.popgmm, checkIfExists: true)
-	POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION(
+	ch_popgmm_all = POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION(
 		ch_variant_qc_plink,
 		ch_popgmm_keep,
 		ch_projected_all[0],
 		ch_bbj_pca_base[2]
+	)
+
+	// 12. Intersect PopGMM with PI_HAT selected-for-removal samples, then perform base PCA and projection
+	ch_popgmm_plink = ch_popgmm_all[0]
+	POPGMM_PIHAT_INTERSECTION_PROJECTION(
+		ch_popgmm_plink,
+		ch_pihat_vertex,
+		ch_popgmm_keep
 	)
 }
 
