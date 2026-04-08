@@ -45,6 +45,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ctrl-label", default="AGP3K", help="Label for control samples")
 
     parser.add_argument("--max-pcs", type=int, default=20, help="Number of PCs to use")
+    parser.add_argument(
+        "--keep-non-bbj-iids",
+        default=None,
+        help=(
+            "Optional keep list file (FID IID without header, or IID-only). "
+            "When provided, non-BBJ samples in projected .sscore are filtered "
+            "to IIDs in this list; BBJ-prefix samples are always retained."
+        ),
+    )
     parser.add_argument("--out-prefix", required=True, help="Output prefix for all figures")
     return parser.parse_args()
 
@@ -144,6 +153,22 @@ def _load_projected_sscore(path: str, max_pcs: int) -> pd.DataFrame:
         raise ValueError(f"Missing projected PC columns after parsing: {missing}")
 
     return out
+
+
+def _load_keep_iids(path: str) -> set[str]:
+    """Load keep IID set from a FID/IID file (no header) or IID-only file."""
+    df = pd.read_csv(path, sep=r"\s+", header=None, engine="python")
+    if df.shape[1] >= 2:
+        series = df.iloc[:, 1]
+    else:
+        series = df.iloc[:, 0]
+
+    iids = (
+        series.astype(str)
+        .str.strip()
+        .loc[lambda s: s.ne("") & s.str.lower().ne("nan")]
+    )
+    return set(iids.tolist())
 
 
 def _build_group_map(
@@ -415,6 +440,20 @@ def main() -> None:
     # labels are derived from sample_info.
     iid_series = score_df["IID"].astype(str)
     is_bbj = iid_series.str.startswith(args.bbj_id_prefix)
+
+    if args.keep_non_bbj_iids:
+        keep_iids = _load_keep_iids(args.keep_non_bbj_iids)
+        keep_mask = is_bbj | iid_series.isin(keep_iids)
+        before_n = int(score_df.shape[0])
+        score_df = score_df.loc[keep_mask].copy()
+        after_n = int(score_df.shape[0])
+        print(
+            "[INFO] Applied --keep-non-bbj-iids: "
+            f"kept {after_n:,}/{before_n:,} rows in projected sscore"
+        )
+        iid_series = score_df["IID"].astype(str)
+        is_bbj = iid_series.str.startswith(args.bbj_id_prefix)
+
     score_df["SOURCE"] = np.where(is_bbj, "BBJ_MERGED", "PROJECTION")
 
     score_df["GROUP"] = iid_series.map(lambda x: group_map.get(str(x), "OTHER"))

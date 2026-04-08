@@ -49,6 +49,11 @@ params.bbj_hwe               = 1e-6
 params.bbj_threads           = 16
 params.bbj_reuse_outputs     = true
 
+//-----------------------------------------------------------------------------
+// PopGMM Configuration for ancestry inference
+//------------------------------------------------------------------------------
+params.popgmm = '/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/PopGMM_output/cluster2_highconf_fid_iid_conf_ge_0p95.tsv'
+
 // -----------------------------------------------------------------------------
 // Processes
 // -----------------------------------------------------------------------------
@@ -507,6 +512,7 @@ process PREPARE_BBJ_GENOTYPE {
 	script:
 	def raw_prefix = raw_bed.baseName
 	def bbj_script = "${params.script_dir}/prepare_bbj_genotype.sh"
+	def signature_cmp_script = "${params.script_dir}/compare_bbj_preprocess_signature.py"
 	def bbj_publish_dir = "${params.out_dir}/09_bbj_preprocess/bbj_raw_qc_norm_plink"
 	def bbj_reuse_outputs = params.bbj_reuse_outputs
 	"""
@@ -516,14 +522,21 @@ process PREPARE_BBJ_GENOTYPE {
 	expected_sig="mind=${params.bbj_mind}|geno=${params.bbj_geno}|maf=${params.bbj_maf}|hwe=${params.bbj_hwe}"
 	echo "\${expected_sig}" > bbj.preprocess.signature.expected.txt
 
+	sig_match=false
 	if [ "${bbj_reuse_outputs}" = "true" ] && \
 	   [ -s "${bbj_publish_dir}/bbj.b38.auto.prep.bed" ] && \
 	   [ -s "${bbj_publish_dir}/bbj.b38.auto.prep.bim" ] && \
 	   [ -s "${bbj_publish_dir}/bbj.b38.auto.prep.fam" ] && \
 	   [ -s "${bbj_publish_dir}/bbj.b38.auto.prep.setid.vcf.gz" ] && \
 	   [ -s "${bbj_publish_dir}/bbj.b38.auto.prep.setid.vcf.gz.tbi" ] && \
-	   [ -s "${bbj_publish_dir}/bbj.preprocess.signature.txt" ] && \
-	   cmp -s bbj.preprocess.signature.expected.txt "${bbj_publish_dir}/bbj.preprocess.signature.txt"; then
+	   [ -s "${bbj_publish_dir}/bbj.preprocess.signature.txt" ]; then
+		if python ${signature_cmp_script} bbj.preprocess.signature.expected.txt "${bbj_publish_dir}/bbj.preprocess.signature.txt"
+		then
+			sig_match=true
+		fi
+	fi
+
+	if [ "\${sig_match}" = "true" ]; then
 		echo "[\$(date)] Found existing BBJ outputs with matching signature in ${bbj_publish_dir}, skip recomputation and reuse files."
 		ln -sf "${bbj_publish_dir}/bbj.b38.auto.prep.bed" bbj.b38.auto.prep.bed
 		ln -sf "${bbj_publish_dir}/bbj.b38.auto.prep.bim" bbj.b38.auto.prep.bim
@@ -752,6 +765,112 @@ process PROJECT_ONTO_BBJ_PCS {
 }
 
 
+process POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION {
+	executor 'slurm'
+	queue 'gr10478b'
+	time '24h'
+
+	publishDir "${params.out_dir}/12_popgmm_subset_projection", mode: 'symlink'
+
+	input:
+	// Variant-QC genotype (source for PopGMM subsetting)
+	tuple path(vqc_bed), path(vqc_bim), path(vqc_fam)
+	// PopGMM high-confidence keep list (FID IID, no header)
+	path popgmm_keep
+	// Existing projection score file from PROJECT_ONTO_BBJ_PCS
+	path projected_sscore
+	// BBJ eigenvalues for variance/explained-ratio plotting
+	path bbj_pca_eval
+
+	output:
+	path("*.popgmm.bed")
+	path("*.popgmm.bim")
+	path("*.popgmm.fam")
+	path("*.popgmm.subset.log.txt")
+	path("*.bbjproj.popgmm.variance_summary.png")
+	path("*.bbjproj.popgmm.pc_pairs.pdf")
+
+	script:
+	def vqc_prefix = vqc_bed.baseName
+	def subset_pre = "${vqc_prefix}.popgmm.keep"
+	def subset_out = "${vqc_prefix}.popgmm"
+	def proj_prefix = "${vqc_prefix}.bbjproj.popgmm"
+	def subset_log = "${vqc_prefix}.popgmm.subset.log.txt"
+	def projection_plot_script = "${params.script_dir}/plot_bbj_projection.py"
+	"""
+	export PATH=/home/b/b37974/:\$PATH
+	source activate ${params.conda_env_activate}
+
+	# 1) Subset variant-QC genotype by PopGMM samples
+	plink2 \
+		--bfile ${vqc_prefix} \
+		--keep ${popgmm_keep} \
+		--make-bed \
+		--out ${subset_pre} \
+		--threads 16
+
+	# 2) Remove monomorphic variants after sample subset
+	plink2 \
+		--bfile ${subset_pre} \
+		--mac 1 \
+		--make-bed \
+		--out ${subset_out} \
+		--threads 16
+
+	# 3) Log detailed sample/variant count changes
+	before_samples=\$(wc -l < ${vqc_prefix}.fam)
+	before_variants=\$(wc -l < ${vqc_prefix}.bim)
+	after_keep_samples=\$(wc -l < ${subset_pre}.fam)
+	after_keep_variants=\$(wc -l < ${subset_pre}.bim)
+	after_mac_samples=\$(wc -l < ${subset_out}.fam)
+	after_mac_variants=\$(wc -l < ${subset_out}.bim)
+
+	{
+		echo "[\$(date)] POPGMM subset + monomorphic-variant removal summary"
+		echo "INPUT_BFILE_PREFIX: ${vqc_prefix}"
+		echo "POPGMM_KEEP_FILE: ${popgmm_keep}"
+		echo "STEP1_KEEP_PREFIX: ${subset_pre}"
+		echo "STEP2_FINAL_PREFIX: ${subset_out}"
+		echo ""
+		echo "Counts (samples / variants):"
+		echo "  Before PopGMM keep            : \${before_samples} / \${before_variants}"
+		echo "  After PopGMM keep             : \${after_keep_samples} / \${after_keep_variants}"
+		echo "  After monomorphic rm (--mac 1): \${after_mac_samples} / \${after_mac_variants}"
+		echo ""
+		echo "Delta (after - before):"
+		echo "  Keep step   sample delta: \$((after_keep_samples - before_samples))"
+		echo "  Keep step  variant delta: \$((after_keep_variants - before_variants))"
+		echo "  MAC step    sample delta: \$((after_mac_samples - after_keep_samples))"
+		echo "  MAC step   variant delta: \$((after_mac_variants - after_keep_variants))"
+		echo "  Total       sample delta: \$((after_mac_samples - before_samples))"
+		echo "  Total      variant delta: \$((after_mac_variants - before_variants))"
+	} > ${subset_log}
+
+	# 4) Replot BBJ projection with optional non-BBJ PopGMM filtering
+	python ${projection_plot_script} \
+		--bbj-eigenval ${bbj_pca_eval} \
+		--projected-sscore ${projected_sscore} \
+		--sample-info ${params.sample_info} \
+		--sample-id-col "${params.sample_id_col}" \
+		--phenotype-col "${params.phenotype_col}" \
+		--phenotype-case-value "${params.phenotype_case_value}" \
+		--phenotype-ctrl-value "${params.phenotype_ctrl_value}" \
+		--bbj-id-prefix "bbj_" \
+		--bbj-label "BBJ" \
+		--case-label "CTEPH" \
+		--ctrl-label "AGP3K" \
+		--max-pcs 20 \
+		--keep-non-bbj-iids ${popgmm_keep} \
+		--out-prefix ${proj_prefix}
+
+	# Clean temporary keep-only files
+	rm -f ${subset_pre}.bed ${subset_pre}.bim ${subset_pre}.fam ${subset_pre}.log ${subset_pre}.nosex
+	"""
+}
+
+
+
+
 
 // -----------------------------------------------------------------------------
 // Workflow Execution
@@ -809,7 +928,7 @@ workflow {
 	ch_bbj_pca_base = PREPARE_BBJ_PCA_BASE(ch_bbj_plink, ch_variant_qc_plink)
 
 	// 10. Project case/control samples onto PCs using the same SNP intersection
-	PROJECT_ONTO_BBJ_PCS(
+	ch_projected_all = PROJECT_ONTO_BBJ_PCS(
 		ch_bbj_pca_base[0],
 		ch_bbj_pca_base[1],
 		ch_bbj_pca_base[2],
@@ -817,6 +936,15 @@ workflow {
 		ch_bbj_pca_base[4],
 		ch_bbj_plink,
 		ch_variant_qc_plink
+	)
+
+	// 11. PopGMM subset on variant-QC genotype + PopGMM-filtered replot from existing projection sscore
+	ch_popgmm_keep = file(params.popgmm, checkIfExists: true)
+	POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION(
+		ch_variant_qc_plink,
+		ch_popgmm_keep,
+		ch_projected_all[0],
+		ch_bbj_pca_base[2]
 	)
 }
 
