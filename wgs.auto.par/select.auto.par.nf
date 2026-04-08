@@ -978,6 +978,40 @@ process PREPARE_FIXED_MODEL_GENOTYPE {
 }
 
 
+process PREPARE_RANDOM_MODEL_GENOTYPE {
+	executor 'slurm'
+	queue 'gr10478b'
+	time '12h'
+
+	publishDir "${params.out_dir}/15_random_model_prep", mode: 'symlink'
+
+	input:
+	// PopGMM-subset genotype from POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION
+	tuple path(pop_bed), path(pop_bim), path(pop_fam)
+	// MAF >= threshold variants list from PREPARE_FIXED_MODEL_GENOTYPE
+	path maf_ge_variants_list
+
+	output:
+	tuple path("*.random_model.bed"), path("*.random_model.bim"), path("*.random_model.fam")
+	path("*.random_model_prep.log.txt")
+
+	script:
+	def pop_prefix = pop_bed.baseName.replaceAll(/\.bed$/, '')
+	def out_prefix = "${pop_prefix}.random_model"
+	def run_script = "${params.script_dir}/run_random_model_genotype_prep.sh"
+	"""
+	export PATH=/home/b/b37974/:\$PATH
+	source activate ${params.conda_env_activate}
+
+	zsh ${run_script} \
+		${pop_prefix} \
+		${maf_ge_variants_list} \
+		${out_prefix} \
+		16
+	"""
+}
+
+
 
 // -----------------------------------------------------------------------------
 // Workflow Execution
@@ -1066,9 +1100,17 @@ workflow {
 	// 13. Prepare fixed-model genotype from PopGMM genotype:
 	//     remove PI_HAT selected samples, drop monomorphic variants,
 	//     and split by MAF threshold using ctrl/case/all reference group
-	PREPARE_FIXED_MODEL_GENOTYPE(
+	ch_fixed_model_all = PREPARE_FIXED_MODEL_GENOTYPE(
 		ch_popgmm_plink,
 		ch_pihat_vertex
+	)
+	ch_maf_ge_variants = ch_fixed_model_all[4]
+
+	// 14. Prepare random model genotype from PopGMM genotype:
+	//     extract variants with MAF >= threshold for random effects model
+	PREPARE_RANDOM_MODEL_GENOTYPE(
+		ch_popgmm_plink,
+		ch_maf_ge_variants
 	)
 }
 
