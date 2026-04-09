@@ -26,6 +26,7 @@ params.phenotype_ctrl_value   = 'AGP3K'
 params.sex_col                = 'Sex'
 params.sex_female_value       = 'F'
 params.sex_male_value         = 'M'
+params.age_col                = 'Age of DNA collection'
 params.target_dp_col		  = 'Target DP'
 params.dp_col 			      = 'DP'
 
@@ -789,6 +790,7 @@ process POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION {
 	path("*.popgmm.subset.log.txt")
 	path("*.bbjproj.popgmm.variance_summary.png")
 	path("*.bbjproj.popgmm.pc_pairs.pdf")
+	path("*.bbjproj.popgmm.sscore")
 
 	script:
 	def vqc_prefix = vqc_bed.baseName
@@ -862,6 +864,11 @@ process POPGMM_SUBSET_AND_PLOT_BBJ_PROJECTION {
 		--max-pcs 20 \
 		--keep-non-bbj-iids ${popgmm_keep} \
 		--out-prefix ${proj_prefix}
+
+	# Keep a deterministic PopGMM-specific sscore artifact for downstream cov/pheno generation
+	# (header preserved; rows restricted to IIDs in popgmm_keep)
+	awk 'NR==FNR { keep[\$2] = 1; next } FNR==1 { print; next } (\$2 in keep) { print }' \
+		${popgmm_keep} ${projected_sscore} > ${proj_prefix}.sscore
 
 	# Clean temporary keep-only files
 	rm -f ${subset_pre}.bed ${subset_pre}.bim ${subset_pre}.fam ${subset_pre}.log ${subset_pre}.nosex
@@ -1012,6 +1019,49 @@ process PREPARE_RANDOM_MODEL_GENOTYPE {
 }
 
 
+process PREPARE_POPGMM_COV_PHENO_FILES {
+	executor 'slurm'
+	queue 'gr10478b'
+	time '12h'
+
+	publishDir "${params.out_dir}/16_cov_pheno_prep", mode: 'symlink'
+
+	input:
+	// PopGMM subset projection score (primary; used to generate AGE-NA IID list)
+	path popgmm_subset_sscore
+	// PopGMM PIHAT intersection projection score
+	path popgmm_pihat_sscore
+
+	output:
+	path("*.pheno.tsv")
+	path("*.cov.sex.tsv")
+	path("*.cov.sex_age_agez.tsv")
+	path("*.age_na.fid_iid")
+	path("*.cov_pheno.log.txt")
+
+	script:
+	def build_script = "${params.script_dir}/build_popgmm_cov_pheno_from_sscore.py"
+	def out_log = "popgmm_cov_pheno.log.txt"
+	"""
+	export PATH=/home/b/b37974/:\$PATH
+	source activate ${params.conda_env_activate}
+
+	python ${build_script} \
+		--sscore-a ${popgmm_subset_sscore} \
+		--sscore-b ${popgmm_pihat_sscore} \
+		--label-a popgmm_subset_on_bbj_pcs \
+		--label-b popgmm_relatedness_aware_projection \
+		--sample-info ${params.sample_info} \
+		--sample-id-col "${params.sample_id_col}" \
+		--sex-col "${params.sex_col}" \
+		--sex-female-value "${params.sex_female_value}" \
+		--sex-male-value "${params.sex_male_value}" \
+		--age-col "${params.age_col}" \
+		--out-log ${out_log}
+	"""
+}
+
+
 
 // -----------------------------------------------------------------------------
 // Workflow Execution
@@ -1089,13 +1139,15 @@ workflow {
 	)
 
 	ch_popgmm_plink = ch_popgmm_all[0]
+	ch_popgmm_subset_sscore = ch_popgmm_all[4]
 
 	// 12. Intersect PopGMM with PI_HAT selected-for-removal samples, then perform base PCA and projection
-	POPGMM_PIHAT_INTERSECTION_PROJECTION(
+	ch_pihat_proj_all = POPGMM_PIHAT_INTERSECTION_PROJECTION(
 		ch_popgmm_plink,
 		ch_pihat_vertex,
 		ch_popgmm_keep
 	)
+	ch_popgmm_pihat_sscore = ch_pihat_proj_all[8]
 
 	// 13. Prepare fixed-model genotype from PopGMM genotype:
 	//     remove PI_HAT selected samples, drop monomorphic variants,
@@ -1111,6 +1163,12 @@ workflow {
 	PREPARE_RANDOM_MODEL_GENOTYPE(
 		ch_popgmm_plink,
 		ch_maf_ge_variants
+	)
+
+	// 15. Build pheno/cov files from two PopGMM-related projection sscore files
+	PREPARE_POPGMM_COV_PHENO_FILES(
+		ch_popgmm_subset_sscore,
+		ch_popgmm_pihat_sscore
 	)
 }
 
