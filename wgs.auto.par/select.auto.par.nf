@@ -1037,7 +1037,7 @@ process PREPARE_POPGMM_COV_PHENO_FILES {
 	path("*.cov.sex.tsv")
 	path("*.cov.sex_age_agez.tsv")
 	path("*.age_na.fid_iid")
-	path("*.cov_pheno.log.txt")
+	path("popgmm_cov_pheno.log.txt")
 
 	script:
 	def build_script = "${params.script_dir}/build_popgmm_cov_pheno_from_sscore.py"
@@ -1060,7 +1060,6 @@ process PREPARE_POPGMM_COV_PHENO_FILES {
 		--out-log ${out_log}
 	"""
 }
-
 
 
 // -----------------------------------------------------------------------------
