@@ -53,7 +53,7 @@ params.bbj_reuse_outputs     = true
 //-----------------------------------------------------------------------------
 // PopGMM Configuration & Separate MAF-based Subset Configuration
 //------------------------------------------------------------------------------
-params.popgmm = '/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/PopGMM_output/cluster2_highconf_fid_iid_conf_ge_0p95.tsv'
+params.popgmm = '/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/PopGMM_output/cluster3_highconf_fid_iid_conf_ge_0p95.tsv'
 params.fixed_model_maf_group = 'ctrl'   // ctrl | case | all
 params.fixed_model_maf_threshold = 0.01
 

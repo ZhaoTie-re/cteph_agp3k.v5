@@ -137,7 +137,7 @@ CDF_STEP_30X="${CDF_STEP_30X:-0.01}"
 # v4-equivalent setting: KNEE_WEIGHT_X=4 and KNEE_WEIGHT_Y=1
 # Current run: use slightly looser threshold to retain more variants (especially around RNF213)
 # Practical knob: decrease KNEE_WEIGHT_X (e.g., 2) to make inclusion less strict
-KNEE_WEIGHT_X="${KNEE_WEIGHT_X:-2}"
+KNEE_WEIGHT_X="${KNEE_WEIGHT_X:-4}"
 KNEE_WEIGHT_Y="${KNEE_WEIGHT_Y:-1}"
 
 # [Output threshold rounding]

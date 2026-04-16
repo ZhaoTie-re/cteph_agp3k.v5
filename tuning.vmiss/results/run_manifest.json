@@ -1,6 +1,6 @@
 {
   "status": "success",
-  "elapsed_seconds": 85.612,
+  "elapsed_seconds": 83.0,
   "out_dir": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results",
   "log_file": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/run_vmiss_tuning.log",
   "metrics_file": "/LARGE0/gr10478/b37974/Pulmonary_Hypertension/cteph_agp3k.v5/tuning.vmiss/results/variant_metrics_compiled.txt",
@@ -30,7 +30,7 @@
     "cdf_step": 0.001,
     "cdf_step_15x": 0.01,
     "cdf_step_30x": 0.01,
-    "knee_weight_x": 2.0,
+    "knee_weight_x": 4.0,
     "knee_weight_y": 1.0,
     "threshold_decimals": 2
   }

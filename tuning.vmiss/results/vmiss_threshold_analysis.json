@@ -14,7 +14,7 @@
     "curve": "concave",
     "direction": "increasing",
     "S": 1.0,
-    "weight_x": 2.0,
+    "weight_x": 4.0,
     "weight_y": 1.0,
     "threshold_decimals": 2
   },
@@ -41,10 +41,10 @@
   "knee_points": {
     "VMISS_15X": {
       "knee_found": true,
-      "knee_vmiss": 0.06,
-      "knee_vmiss_raw": 0.06,
-      "knee_cumulative_percentage": 81.55027664085524,
-      "knee_cumulative_count": 37332336,
+      "knee_vmiss": 0.04,
+      "knee_vmiss_raw": 0.04,
+      "knee_cumulative_percentage": 72.85430192951435,
+      "knee_cumulative_count": 33351466,
       "total_variants": 45778307,
       "vmiss_col": "VMISS_15X",
       "maf_group": "All",
@@ -54,10 +54,10 @@
     },
     "VMISS_30X": {
       "knee_found": true,
-      "knee_vmiss": 0.05,
-      "knee_vmiss_raw": 0.05,
-      "knee_cumulative_percentage": 81.26437484898688,
-      "knee_cumulative_count": 37201455,
+      "knee_vmiss": 0.03,
+      "knee_vmiss_raw": 0.03,
+      "knee_cumulative_percentage": 71.40813879377409,
+      "knee_cumulative_count": 32689437,
       "total_variants": 45778307,
       "vmiss_col": "VMISS_30X",
       "maf_group": "All",

@@ -3,8 +3,8 @@
     "VMISS": 0.05
   },
   "dp": {
-    "15X_VMISS": 0.06,
-    "30X_VMISS": 0.05
+    "15X_VMISS": 0.04,
+    "30X_VMISS": 0.03
   },
   "case_ctrl": {
     "CTRL_VMISS": 0.05,
