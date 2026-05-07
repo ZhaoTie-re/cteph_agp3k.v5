@@ -18,7 +18,7 @@ params.summaryPThreshold = 5e-8
 params.plink2Threads = 16
 params.phenoName = 'PHENO1'
 params.covarNames = 'SEX,PC1_AVG-PC7_AVG'
-params.covarPcSource = 'bbj'   // own | bbj
+params.covarPcSource = 'own'   // own | bbj
 params.onlySnpAssoc = false
 
 // -----------------------------------------------------------------------------

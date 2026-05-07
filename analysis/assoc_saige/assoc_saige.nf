@@ -36,7 +36,7 @@ params.condaEnvActivate = 'saige'
 params.projectName = 'cteph_agp3k.v5.saige'
 params.phenoName = 'PHENO1'
 params.covarNames = 'SEX,PC1_AVG,PC2_AVG,PC3_AVG,PC4_AVG,PC5_AVG,PC6_AVG,PC7_AVG'
-params.covarPcSource = 'bbj' // own | bbj
+params.covarPcSource = 'own' // own | bbj
 params.runSparse = true // true: run sparse GRM branch; false: full GRM only
 
 // -----------------------------------------------------------------------------
@@ -88,9 +88,9 @@ process LdPruning {
         --bim ${bim} \
         --fam ${fam} \
         --exclude range high_ld_regions.txt \
-        --maf 0.05 \
+        --maf 0.01 \
         --snps-only just-acgt \
-        --indep-pairwise 50 5 0.2 \
+        --indep-pairwise 50 10 0.2 \
         --out ${outPrefix} \
         --threads 8
     """

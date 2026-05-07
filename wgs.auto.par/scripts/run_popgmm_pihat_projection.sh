@@ -104,9 +104,9 @@ plink2 \
   --bfile "${base_samples_prefix}" \
   --autosome \
   --snps-only just-acgt \
-  --maf 0.05 \
+  --maf 0.01 \
   --exclude range "${high_ld_regions_bed}" \
-  --indep-pairwise 50 5 0.2 \
+  --indep-pairwise 50 10 0.2 \
   --out "${base_prune_prefix}" \
   --threads "${num_threads}"
 
