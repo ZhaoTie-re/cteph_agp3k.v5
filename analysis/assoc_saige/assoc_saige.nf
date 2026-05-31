@@ -35,9 +35,13 @@ params.condaEnvActivate = 'saige'
 // Core analysis controls.
 params.projectName = 'cteph_agp3k.v5.saige'
 params.phenoName = 'PHENO1'
-params.covarNames = 'SEX,PC1_AVG,PC2_AVG,PC3_AVG,PC4_AVG,PC5_AVG,PC6_AVG,PC7_AVG'
-params.covarPcSource = 'own' // own | bbj
+params.covarNames = 'SEX,AGE_Z,PC1_AVG,PC2_AVG,PC3_AVG,PC4_AVG,PC5_AVG,PC6_AVG,PC7_AVG'
+params.covarPcSource = 'bbj' // own | bbj
 params.runSparse = true // true: run sparse GRM branch; false: full GRM only
+params.includeAgeZ = params.covarNames
+    .split(',')
+    .collect { String s -> s.trim().toUpperCase() }
+    .contains('AGE_Z')
 
 // -----------------------------------------------------------------------------
 // Input Path Configuration
@@ -49,8 +53,13 @@ params.covPhenoDirRelPath = '16_cov_pheno_prep'
 params.plinkPrefixName = 'cteph_agp3k_v5_wgs_merged.sample_qc.variant_qc.popgmm.random_model'
 params.phenoFileName = 'popgmm_subset_on_bbj_pcs.pheno.tsv'
 params.covFileName = params.covarPcSource == 'bbj' \
-    ? 'popgmm_subset_on_bbj_pcs.cov.sex.tsv' \
-    : 'popgmm_relatedness_aware_projection.cov.sex.tsv'
+    ? (params.includeAgeZ \
+        ? 'popgmm_subset_on_bbj_pcs.cov.sex_age_agez.tsv' \
+        : 'popgmm_subset_on_bbj_pcs.cov.sex.tsv') \
+    : (params.includeAgeZ \
+        ? 'popgmm_relatedness_aware_projection.cov.sex_age_agez.tsv' \
+        : 'popgmm_relatedness_aware_projection.cov.sex.tsv')
+params.ageNaRemoveFileName = 'popgmm_subset_on_bbj_pcs.age_na.fid_iid'
 params.highLdFileName = 'high-LD-regions-hg38-GRCh38_modified.txt'
 
 
@@ -92,6 +101,40 @@ process LdPruning {
         --snps-only just-acgt \
         --indep-pairwise 50 10 0.2 \
         --out ${outPrefix} \
+        --threads 8
+    """
+}
+
+/*
+ * Stage 0b (Shared, conditional): Remove AGE_Z-missing samples once
+ * from the base PLINK dataset so all downstream steps use a consistent sample set.
+ */
+process RemoveAgeNaSamples {
+    executor 'slurm'
+    queue 'gr10478b'
+    time '6h'
+    publishDir "${params.resultsDir}/00.prep/00.ageNaRemove", mode: 'symlink'
+
+    input:
+    tuple val(prefix), path(bed), path(bim), path(fam)
+    path(age_na_remove_file)
+
+    output:
+    tuple val(prefix), path('plink.agezrm.bed'), path('plink.agezrm.bim'), path('plink.agezrm.fam'), emit: filteredPlink
+
+    script:
+    """
+    export PATH=/home/b/b37974/:\$PATH
+    source activate ${params.condaEnvActivate}
+    set -euo pipefail
+
+    plink2 \
+        --bed ${bed} \
+        --bim ${bim} \
+        --fam ${fam} \
+        --remove ${age_na_remove_file} \
+        --make-bed \
+        --out plink.agezrm \
         --threads 8
     """
 }
@@ -154,6 +197,7 @@ process FitNullGlmmFullGrm {
     path(prune_in)
     path(pheno_file)
     path(cov_file)
+    path(age_na_remove_file)
 
     output:
     tuple path('*.rda'), path('*.varianceRatio.txt'), emit: nullModel
@@ -187,11 +231,17 @@ process FitNullGlmmFullGrm {
         --sex_col "SEX" \\
         --out "merged_pheno_cov.txt"
 
+    if [[ "${params.includeAgeZ}" == "true" ]]; then
+        awk 'NR==FNR{rm[\$2]=1; next} FNR==1 || !(\$2 in rm)' ${age_na_remove_file} merged_pheno_cov.txt > merged_pheno_cov.filtered.txt
+    else
+        cp merged_pheno_cov.txt merged_pheno_cov.filtered.txt
+    fi
+
     # SAIGE Step 1 (full GRM)
     
     step1_fitNULLGLMM.R \
         --plinkFile=${prefix}.pruned \
-        --phenoFile=merged_pheno_cov.txt \
+        --phenoFile=merged_pheno_cov.filtered.txt \
         --phenoCol=${params.phenoName} \
         --covarColList=${params.covarNames} \
         --sexCol=SEX \
@@ -315,6 +365,7 @@ process FitNullGlmmSparseGrm {
     tuple val(plink_prefix), path(plink_bed), path(plink_bim), path(plink_fam)
     path(pheno_file)
     path(cov_file)
+    path(age_na_remove_file)
 
     output:
     tuple path('*.rda'), path('*.varianceRatio.txt'), emit: nullModel
@@ -339,10 +390,16 @@ process FitNullGlmmSparseGrm {
         --sex_col "SEX" \\
         --out "merged_pheno_cov.txt"
 
+    if [[ "${params.includeAgeZ}" == "true" ]]; then
+        awk 'NR==FNR{rm[\$2]=1; next} FNR==1 || !(\$2 in rm)' ${age_na_remove_file} merged_pheno_cov.txt > merged_pheno_cov.filtered.txt
+    else
+        cp merged_pheno_cov.txt merged_pheno_cov.filtered.txt
+    fi
+
     # SAIGE Step 1 (sparse GRM)
     step1_fitNULLGLMM.R \
         --plinkFile=${plinkPrefix} \
-        --phenoFile=merged_pheno_cov.txt \
+        --phenoFile=merged_pheno_cov.filtered.txt \
         --phenoCol=${params.phenoName} \
         --covarColList=${params.covarNames} \
         --sexCol=SEX \
@@ -521,6 +578,7 @@ workflow {
     plinkPrefix = "${params.genotypeRoot}/${params.randomModelDirRelPath}/${params.plinkPrefixName}"
     phenoPath = "${params.genotypeRoot}/${params.covPhenoDirRelPath}/${params.phenoFileName}"
     covPath = "${params.genotypeRoot}/${params.covPhenoDirRelPath}/${params.covFileName}"
+    ageNaRemovePath = "${params.genotypeRoot}/${params.covPhenoDirRelPath}/${params.ageNaRemoveFileName}"
     highLdPath = "${params.infoDir}/${params.highLdFileName}"
 
     // Early validation for key parameters and required input files.
@@ -543,6 +601,9 @@ workflow {
             error "Missing required input/script path: ${reqPath}"
         }
     }
+    if (params.includeAgeZ && !file(ageNaRemovePath).exists()) {
+        error "Missing AGE_Z removal file: ${ageNaRemovePath}"
+    }
     
     // Input channels
     plinkCh = channel.fromFilePairs("${plinkPrefix}.{bed,bim,fam}", size: 3)
@@ -551,6 +612,7 @@ workflow {
     // Channels for Phenotype and Covariate files
     phenoCh = channel.fromPath(phenoPath)
     covCh = channel.fromPath(covPath)
+    ageNaRemoveCh = channel.fromPath(ageNaRemovePath)
 
     // Autosomes
     chrCh = channel.of(1..22)
@@ -560,12 +622,17 @@ workflow {
 
     // Shared stage
     targetPlinkCh = plinkCh
+    if (params.includeAgeZ) {
+        RemoveAgeNaSamples(plinkCh, ageNaRemoveCh)
+        targetPlinkCh = RemoveAgeNaSamples.out.filteredPlink
+    }
+
     LdPruning(targetPlinkCh, highLdCh)
     pruneInCh = LdPruning.out.pruneIn
 
     // Full-GRM branch (mandatory)
     SplitPlinkToBgen(targetPlinkCh, chrCh)
-    FitNullGlmmFullGrm(targetPlinkCh, pruneInCh, phenoCh, covCh)
+    FitNullGlmmFullGrm(targetPlinkCh, pruneInCh, phenoCh, covCh, ageNaRemoveCh)
 
     fullAssocInputCh = FitNullGlmmFullGrm.out.nullModel.combine(SplitPlinkToBgen.out.bgenFiles)
     AssocTestFullGrm(fullAssocInputCh)
@@ -581,7 +648,8 @@ workflow {
             CalcSparseGrm.out.sparseGrm,
             targetPlinkCh,
             phenoCh,
-            covCh
+            covCh,
+            ageNaRemoveCh
         )
 
         sparseAssocInputCh = FitNullGlmmSparseGrm.out.nullModel.combine(CalcSparseGrm.out.sparseGrm)

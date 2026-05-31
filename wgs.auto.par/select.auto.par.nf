@@ -48,7 +48,7 @@ params.bbj_geno              = 0.01
 params.bbj_maf               = 0.05
 params.bbj_hwe               = 1e-6
 params.bbj_threads           = 16
-params.bbj_reuse_outputs     = true
+1params.bbj_reuse_outputs     = false // If true, check for existing outputs in the publish directory of PREPARE_BBJ_GENOTYPE and reuse if they exist and match the expected signature (based on the above BBJ QC parameters). If false, always rerun the BBJ preprocessing script.
 
 //-----------------------------------------------------------------------------
 // PopGMM Configuration & Separate MAF-based Subset Configuration
@@ -348,7 +348,9 @@ process BUILD_SAMPLE_QC_TABLE {
 		--bfile ${merged_prefix} \
 		--autosome \
 		--snps-only just-acgt \
-		--maf 0.05 \
+		--maf 0.01 \
+		--geno 0.02 \
+		--hwe 1e-6 \
 		--exclude range ${params.high_ld_regions} \
 		--indep-pairwise 50 5 0.2 \
 		--out ${merged_prefix}.Fprune \

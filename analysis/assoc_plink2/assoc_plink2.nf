@@ -17,9 +17,13 @@ params.models = ['additive', 'dominant', 'recessive']
 params.summaryPThreshold = 5e-8
 params.plink2Threads = 16
 params.phenoName = 'PHENO1'
-params.covarNames = 'SEX,PC1_AVG-PC7_AVG'
-params.covarPcSource = 'own'   // own | bbj
+params.covarNames = 'SEX,AGE_Z,PC1_AVG-PC7_AVG'
+params.covarPcSource = 'bbj'   // own | bbj
 params.onlySnpAssoc = false
+params.includeAgeZ = params.covarNames
+    .split(',')
+    .collect { String s -> s.trim().toUpperCase() }
+    .contains('AGE_Z')
 
 // -----------------------------------------------------------------------------
 // Relative Input Paths
@@ -27,8 +31,12 @@ params.onlySnpAssoc = false
 params.bedPrefixRelPath = '14_fixed_model_prep/cteph_agp3k_v5_wgs_merged.sample_qc.variant_qc.popgmm.fixed_model.maf_ge_threshold'
 params.phenoRelPath = '16_cov_pheno_prep/popgmm_subset_on_bbj_pcs.pheno.tsv'
 params.covarRelPath = params.covarPcSource == 'bbj' \
-    ? '16_cov_pheno_prep/popgmm_subset_on_bbj_pcs.cov.sex.tsv' \
-    : '16_cov_pheno_prep/popgmm_relatedness_aware_projection.cov.sex.tsv'
+    ? (params.includeAgeZ \
+        ? '16_cov_pheno_prep/popgmm_subset_on_bbj_pcs.cov.sex_age_agez.tsv' \
+        : '16_cov_pheno_prep/popgmm_subset_on_bbj_pcs.cov.sex.tsv') \
+    : (params.includeAgeZ \
+        ? '16_cov_pheno_prep/popgmm_relatedness_aware_projection.cov.sex_age_agez.tsv' \
+        : '16_cov_pheno_prep/popgmm_relatedness_aware_projection.cov.sex.tsv')
 params.ageNaRemoveRelPath = '16_cov_pheno_prep/popgmm_subset_on_bbj_pcs.age_na.fid_iid'
 params.tommoVcfName = 'tommo-60kjpn-20240904-GRCh38-snvindel-af-autosome.norm.vcf.gz'
 
@@ -56,9 +64,8 @@ process RunAssocPlink2Model {
     def covarFile = "${genotypeRoot}/${params.covarRelPath}"
     def modelOpt = modelName == 'additive' ? '--glm' : "--glm ${modelName}"
     def snpOnlyOpt = params.onlySnpAssoc ? '--snps-only just-acgt' : ''
-    def includeAgeZ = params.covarNames.split(',').collect { String s -> s.trim().toUpperCase() }.contains('AGE_Z')
     def ageNaRemoveFile = "${genotypeRoot}/${params.ageNaRemoveRelPath}"
-    def ageNaRemoveOpt = includeAgeZ ? "--remove ${ageNaRemoveFile}" : ''
+    def ageNaRemoveOpt = params.includeAgeZ ? "--remove ${ageNaRemoveFile}" : ''
 
     """
     export PATH=/home/b/b37974/:\$PATH
